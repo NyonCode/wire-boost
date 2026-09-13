@@ -1,6 +1,6 @@
 ---
 order: 23
-nav: false
+summary: An inline text input that validates and saves on blur — the cell you type into.
 ---
 
 # TextInputColumn
@@ -148,7 +148,7 @@ TextInputColumn::make('phone')
 
 ```php
 TextInputColumn::make('price')
-    ->inputPrefix('$')
+    ->inputPrefix("$")
     ->inputSuffix('.00')
     ->helperText('Net price, excluding VAT')
     ->inputClass('font-mono text-right')

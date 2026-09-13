@@ -1,5 +1,6 @@
 ---
 order: 47
+summary: Checkboxes, select-all, the bulk bar — and what selection means when the sweep and the keyboard reach it too.
 ---
 
 # Selecting Rows
@@ -109,6 +110,21 @@ of "everything except…":
   to add.
 - The header checkbox edits the exclusions and never silently drops you back to
   an explicit selection.
+
+## A row the selection cannot take
+
+`Table::rowInactive(…, fn (InactiveRow $row) => $row->selectable(false))` keeps a
+cancelled or archived record out of the selection: its checkbox is `inert` (not
+merely unclickable — it leaves the tab order too), "select page" and the header
+box skip it, ranges and the sweep pass over it, and a forged toggle is refused on
+the server. Unticking stays allowed, so a row locked *after* it was selected can
+still be removed.
+
+The one thing it cannot narrow is the mode above: **"select all N" is a query**,
+and a predicate written in PHP is not something a query can carry. A bulk action
+that must not touch inactive records checks the record itself — the same as for
+any other rule the database cannot express. The whole state is in
+[Inactive Records](inactive-records.md).
 
 ## Dragging down the column
 

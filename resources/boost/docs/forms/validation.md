@@ -1,5 +1,6 @@
 ---
 order: 20
+summary: Rules at three levels — the field, the form and the pipeline — and which of them wins when they disagree.
 ---
 
 # Form Validation
@@ -18,10 +19,10 @@ TextInput::make('name')
     ->maxLength(255)
     ->rules(['string', 'regex:/^[a-zA-Z\s]+$/']);
 
-TextInput::make('email')
+TextInput::make('email')      // [tl! focus:start]
     ->email()
     ->required()
-    ->rules('unique:users,email');
+    ->unique();                // [tl! focus:end]
 
 TextInput::make('age')
     ->numeric()
@@ -32,20 +33,66 @@ Select::make('role')
     ->rules('in:admin,editor,viewer');
 ```
 
-### Built-in Rule Helpers
+### Type Helpers Are Not Validation
 
-Some fields provide fluent helpers that map to Laravel rules:
+`->email()`, `->numeric()`, `->integer()`, `->url()` and `->tel()` are *type*
+presets: they set the HTML input type and inputmode, which picks the phone
+keyboard and lets the browser offer its own hint. `->maxLength()` and
+`->minLength()` render the `maxlength` / `minlength` attributes. None of them
+adds a Laravel rule, and none of them survives a request that did not come from
+your form — the server has to be told separately what it will accept:
 
-| Method | Equivalent Rule |
-|--------|-----------------|
-| `->required()` | `required` |
-| `->email()` | `email` |
-| `->numeric()` | `numeric` |
-| `->integer()` | `integer` |
-| `->maxLength(255)` | `max:255` |
-| `->minLength(3)` | `min:3` |
-| `->url()` | `url` |
-| `->tel()` | sets `tel` HTML input type (no validation rule) |
+| Method | What it actually does | The rule to add |
+|--------|-----------------------|-----------------|
+| `->email()` | `type=email`, `inputmode=email` | `->rules(['email'])` |
+| `->numeric()` | `type=number`, `inputmode=decimal` | `->rules(['numeric'])` |
+| `->integer()` | `type=number`, `inputmode=numeric`, `step=1` | `->rules(['integer'])` |
+| `->url()` | `type=url` | `->rules(['url'])` |
+| `->tel()` | `type=tel` | `->rules(['regex:…'])`, or use [PhoneInput](fields/phone-input.md) |
+| `->maxLength(255)` | `maxlength="255"` | `->rules(['max:255'])` |
+| `->minLength(3)` | `minlength="3"` | `->rules(['min:3'])` |
+
+The helpers that *are* rules are `->required()` (and `->requiredWith()`), which
+prepends `required`, and [`->unique()`](#unique-values). Some fields also carry
+**implicit** rules they add on their own, because their state cannot be checked
+any other way: [`MoneyInput`](fields/money-input.md) validates the amount behind
+its formatted text, [`PhoneInput`](fields/phone-input.md) the number behind its
+country prefix, [`FileUpload`](fields/file-upload.md) the mime types and sizes it
+was configured with, and a field with `options()` an `in:` constraint over its
+own option keys (unless you declared one yourself).
+
+> **A cleared numeric field does not need a rule to be safe.** A `<input
+> type=number>` submits `''` when it is emptied, and `TextInput` turns that into
+> `null` on the way to the record rather than writing an empty string to a
+> numeric column. See [Empty Values](fields/text-input.md#empty-values).
+
+### Unique Values
+
+`unique()` builds Laravel's `Rule::unique()` from what the form already knows:
+the table from the bound model, the column from the field's name, and — in edit
+mode — the record being edited is excluded from its own check.
+
+```php
+TextInput::make('email')->unique();                      // unique:users,email, ignoring this user
+TextInput::make('email')->unique(ignoreRecord: false);   // every row counts, including this one
+TextInput::make('tax_id')->unique(column: 'vat_number'); // a field whose name is not the column
+TextInput::make('name')->unique(table: 'companies');     // a form with no ->model()
+```
+
+The rule is built when validation runs, not when the schema is declared. That
+matters because the record arrives from the form runtime after your `form()`
+method has returned — a rule resolved at declaration time would ignore nothing
+on the very form it was written for.
+
+Scope the check further with `modifyRuleUsing`, which receives the `Unique` rule:
+
+```php
+TextInput::make('email')
+    ->unique(modifyRuleUsing: fn (Unique $rule) => $rule->where('team_id', $this->teamId));
+```
+
+A form with no `->model()` has no table to infer, so pass one: without either,
+`unique()` throws a `FormConfigurationException` naming the field.
 
 ### Custom Validation Messages
 
@@ -67,13 +114,19 @@ Add rules at the form level that span multiple fields:
 ```php
 Form::make()
     ->schema([
-        TextInput::make('password')->password()->required(),
-        TextInput::make('password_confirmation')->password()->required(),
+        TextInput::make('password')->password()->required()->rules(['confirmed']),
+        TextInput::make('password_confirmation')->password()->required()->dehydrated(false),
     ])
     ->validationMessages([
         'password.confirmed' => 'Passwords do not match.',
     ]);
 ```
+
+The confirmation field has a rule and no column behind it, so it is marked
+`dehydrated(false)`: it takes part in validation and is dropped before the record
+is written. Without that the save would try to set a `password_confirmation`
+attribute on the model and fail on the missing column — see
+[Save Lifecycle](save-lifecycle.md#what-reaches-the-record).
 
 ---
 
@@ -153,9 +206,7 @@ entry:
 ```php
 TextInput::make('company_name')
     ->required(fn (callable $get) => $get('type') === 'business')
-    ->rules(fn () => $this->isEditing()
-        ? 'unique:companies,name,' . $this->getModel()->id
-        : 'unique:companies,name');
+    ->rules(fn (callable $get) => $get('type') === 'business' ? ['min:2'] : []);
 
 // Closures may also be individual entries in a rules array:
 TextInput::make('slug')->rules([
@@ -205,7 +256,7 @@ TextInput::make('email')->email()->required()->validateLive();   // on each chan
 TextInput::make('name')->required()->validateOnBlur();           // when focus leaves
 ```
 
-`validateLive()` enables `live()` and `validateOnBlur()` enables `blur` binding,
+`validateLive()` enables `live()` and `validateOnBlur()` enables `live.blur` binding,
 so the server sees the change and refreshes only that field's error bag entry.
 Conditioning helpers such as `requiredIf()` are honoured live, because they read
 the current sibling state on each roundtrip. Live validation also works for

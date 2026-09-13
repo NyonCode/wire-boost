@@ -1,6 +1,19 @@
 {
     "name": "nyoncode/wire-boost",
-    "description": "AI tooling for the Wire ecosystem – an MCP server, AI guidelines and agent skills for wire-core, wire-forms, wire-table and wire-sortable.",
+    "description": "AI tooling for the Wire ecosystem – an MCP server, AI guidelines and agent skills for the whole wireStack: core, forms, tables, sortable, panels, the admin shell and the ready-made modules.",
+    "keywords": [
+        "laravel",
+        "livewire",
+        "wire",
+        "wirestack",
+        "nyoncode",
+        "ai",
+        "mcp",
+        "mcp-server",
+        "agent-skills",
+        "laravel-boost"
+    ],
+    "homepage": "https://wirestack.nyoncode.cz",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -9,14 +22,19 @@
             "role": "Developer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/ONyklicek/WireStack/issues",
+        "source": "https://github.com/NyonCode/wire-boost",
+        "docs": "https://wirestack.nyoncode.cz"
+    },
     "require": {
         "php": "^8.2",
         "nyoncode/wire-core": "self.version",
         "illuminate/support": "^12.0|^13.0",
         "illuminate/console": "^12.0|^13.0",
         "laravel/mcp": "^0.8",
-        "livewire/livewire": "^3.0",
-        "nyoncode/laravel-package-toolkit": "^2.4.2"
+        "livewire/livewire": "^4.0",
+        "nyoncode/laravel-package-toolkit": "^2.5.0"
     },
     "require-dev": {
         "orchestra/testbench": "^10.0|^11.0",
@@ -24,9 +42,17 @@
         "pestphp/pest": "^4.0|^5.0"
     },
     "suggest": {
-        "nyoncode/wire-forms": "Enables form introspection tools.",
-        "nyoncode/wire-table": "Enables table introspection tools.",
-        "nyoncode/wire-sortable": "Enables sortable guidelines and skills."
+        "nyoncode/wire-forms": "Enables form introspection tools, guidelines and skills.",
+        "nyoncode/wire-table": "Enables table introspection tools, guidelines and skills.",
+        "nyoncode/wire-sortable": "Enables sortable guidelines and skills.",
+        "nyoncode/wire-panels": "Enables resource/page introspection (describe-resource reports their surfaces), guidelines and skills.",
+        "nyoncode/wire-admin": "Enables admin shell guidelines and skills (the layout, the sidebar, the chrome regions).",
+        "nyoncode/wire-module-users": "Enables module guidelines and skills; describe-module reports what it registers.",
+        "nyoncode/wire-module-auth": "Enables module guidelines and skills; describe-module reports what it registers.",
+        "nyoncode/wire-module-settings": "Enables module guidelines and skills; describe-module reports what it registers.",
+        "nyoncode/wire-module-audit": "Enables module guidelines and skills; describe-module reports what it registers.",
+        "nyoncode/wire-module-notifications": "Enables module guidelines and skills; describe-module reports what it registers.",
+        "nyoncode/wire-module-media": "Enables module guidelines and skills; describe-module reports what it registers."
     },
     "autoload": {
         "psr-4": {

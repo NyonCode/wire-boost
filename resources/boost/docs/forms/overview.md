@@ -1,12 +1,13 @@
 ---
 order: 10
+summary: "The form system: a schema declared in PHP, bound to a Livewire host or standalone, and what happens between a submit and a saved record."
 ---
 
 # Wire Forms
 
 Standalone form system for Laravel Livewire. Works independently or with Wire Table.
 
-> Need to **display** a record read-only instead of editing it? See [Infolists](../core/infolists.md) — the same schema and layout, with display entries instead of input fields.
+> Need to **display** a record read-only instead of editing it? See [Infolists](../core/infolists/index.md) — the same schema and layout, with display entries instead of input fields.
 
 ## Installation
 
@@ -266,7 +267,49 @@ When `->authorize()` is enabled the form becomes read-only (and hides the save b
 ```php
 ->toHtml(): string                   // Blade output
 (string) $form                       // __toString()
+->nativeSubmit(bool $native = true)  // render the fields for a browser submit, not Livewire
+->submitsNatively(): bool            // which mode the fields are in
 ```
+
+#### Native submit
+
+`nativeSubmit()` renders the fields for the browser's own form submission:
+each carries `name` and `value=old(…)` instead of `wire:model`, and errors come
+from the shared `$errors` bag. Use it where the endpoint is not yours — a
+sign-in screen posting to Fortify's route is what it was built for.
+
+The `<form>` element stays with you. The action, the `@csrf` and the submit
+button are the page's decision, so the form object renders fields and nothing
+around them:
+
+```blade
+<form method="POST" action="{{ route('login') }}"> {{-- [tl! focus] --}}
+    @csrf
+    {{ $credentials }}
+    <button type="submit">{{ __('Sign in') }}</button>
+</form>
+```
+
+A field must declare it can do this, by implementing
+`Contracts\SupportsNativeSubmit`. A schema containing one that does not throws
+`FormConfigurationException` at render, naming the field — because a field bound
+only by `wire:model` has no `name`, so the browser would post nothing for it and
+the page would submit an empty value with no error anywhere. Anything needing a
+round-trip mid-form cannot qualify: `live()` and reactive fields, a `Select`
+searching on the server, `FileUpload`, `Repeater`. `TextInput`, `Checkbox`,
+`Hidden` and `OtpInput` implement it — the fields the signed-out screens are
+made of.
+
+A checkbox binds differently from an input and deliberately so: it carries a
+constant `value="1"` and answers with its *presence*, because an unticked box
+posts no key at all. Its tick comes back from the last submission when there was
+one — `old()` alone cannot tell "unticked" from "fresh page", so a box defaulted
+on would silently re-tick itself after a user cleared it.
+
+The mode is applied to the schema a form is **about** to render, after
+`form.configuring` has run — so a field a plugin added is switched with the rest,
+and one that cannot submit natively is refused whether it was declared or added.
+See [ADR 0036](https://github.com/nyoncode/wire/blob/main/architecture/decisions/0036-native-submit-forms.md).
 
 ### Factory
 
@@ -363,11 +406,49 @@ Every field inherits:
 ->defaultOnNull(bool $condition = true) // also fill the default over an edit-mode null
 ->extraAttributes(array $attrs)         // HTML attributes
 ->live()                                // wire:model.live
-->debounce(int $ms = 500)              // wire:model.blur with debounce
+->debounce(int $ms = 500)              // adds .debounce.{ms}ms to the binding
 ->afterStateUpdated(Closure $callback)  // react to value changes (auto-enables live)
 ->rules(string|array $rules)            // Laravel validation rules
+->unique(?string $table, ?string $column, bool $ignoreRecord = true, ?Closure $modifyRuleUsing) // [tl! focus]
 ->validationMessages(array $messages)   // custom validation messages
+->formatStateUsing(Closure $fn)         // fn ($state, $record) — shape a stored value into field state [tl! focus:start]
+->dehydrated(bool|Closure $condition = true)  // false keeps the value out of the record
+->dehydrateStateUsing(Closure $fn)      // fn ($state, $record) — shape the value on its way out [tl! focus:end]
 ```
+
+`formatStateUsing()` runs as the form is filled, `dehydrateStateUsing()` as it is
+saved, each after the field type's own transform. See
+[Save Lifecycle](save-lifecycle.md#what-reaches-the-record) for what a field
+writes, and [Validation](validation.md#unique-values) for `unique()`.
 
 `visible()`, `hidden()`, `disabled()` and `afterStateUpdated()` closures receive live state
 accessors (`$get`, `$set`, `$state`). See [Reactive Fields](reactive-fields.md).
+
+## Adjusting A Form You Do Not Own
+
+A form shipped by an installed [module](../panels/modules.md) is built inside code
+the application does not have, so the three plugin hooks around it are the way in
+— one per stage, and they are not interchangeable:
+
+| Hook | Runs | Reach for it to |
+|---|---|---|
+| `form.configuring` | once, when the schema becomes a config | **add or remove a field** |
+| `form.filling` | when `fill()` binds values | change what a field arrives holding |
+| `form.saving` | after validation, before persistence | change what reaches the record |
+
+```php
+$manager->hook(Hook::FormConfiguring, function (FormConfiguringPayload $payload) {
+    $payload->schema = [...$payload->schema, TextInput::make('crm_id')];   // [tl! focus]
+
+    return $payload;
+}, for: 'users');
+```
+
+`form.configuring` is the counterpart of a table's `table.composing`: it runs at the
+one place a schema becomes a config, and the config is memoized, so it fires once
+per form rather than once per render. `for:` narrows the callback to one form — the
+registered key of the resource a page shows, the host component's class, or the
+model — and without it the callback runs for every form in the application.
+
+See [Hooks](../core/plugins/hooks.md) for the full list and
+[Save Lifecycle](save-lifecycle.md) for where the last two sit in the pipeline.

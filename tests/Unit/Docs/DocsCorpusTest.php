@@ -61,13 +61,16 @@ it('resolves a real id to an absolute path', function () {
 it('infers the owning package from a docs subtree', function () {
     expect($this->corpus->packageFor('docs/table/columns/index.md'))->toBe('wire-table')
         ->and($this->corpus->packageFor('docs/forms/validation.md'))->toBe('wire-forms')
-        ->and($this->corpus->packageFor('docs/core/actions.md'))->toBe('wire-core')
+        ->and($this->corpus->packageFor('docs/core/actions/index.md'))->toBe('wire-core')
         ->and($this->corpus->packageFor('docs/sortable/overview.md'))->toBe('wire-sortable')
+        ->and($this->corpus->packageFor('docs/panels/resources.md'))->toBe('wire-panels')
+        ->and($this->corpus->packageFor('docs/admin/sidebar.md'))->toBe('wire-admin')
+        ->and($this->corpus->packageFor('docs/modules/users.md'))->toBe('wire-modules')
         ->and($this->corpus->packageFor('docs/boost/overview.md'))->toBe('wire-boost');
 });
 
 it('falls back to the umbrella package for cross-cutting docs', function () {
-    expect($this->corpus->packageFor('docs/getting-started.md'))->toBe('wire')
+    expect($this->corpus->packageFor('docs/start/getting-started.md'))->toBe('wire')
         ->and($this->corpus->packageFor('guidelines/core.blade.php'))->toBe('wire');
 });
 
@@ -113,4 +116,13 @@ it('disambiguates a configured root that collides with a bundled one', function 
 
     rmdir($collision);
     rmdir(dirname($collision));
+});
+
+it('lists every package the filter accepts', function () {
+    // Derived from the prefix map rather than restated: a package documented but
+    // missing from this list is documentation the filter cannot reach.
+    expect(DocsCorpus::packages())
+        ->toContain('wire-core', 'wire-forms', 'wire-table', 'wire-sortable')
+        ->toContain('wire-panels', 'wire-admin', 'wire-modules', 'wire-boost')
+        ->and(DocsCorpus::packages())->toBe(array_unique(DocsCorpus::packages()));
 });

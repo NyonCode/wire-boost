@@ -1,6 +1,6 @@
 ---
 order: 23
-nav: false
+summary: An inline dropdown that saves the moment it changes, with the options and the write path behind it.
 ---
 
 # SelectColumn
@@ -76,6 +76,6 @@ SelectColumn::make('role')
 ->options(array|string|Closure $options) // ['value' => 'Label', ...] or an enum class
 ->disabled(bool|Closure $disabled = true)
 ->isDisabled(Model $record): bool
-->relationship(string $name, string $titleAttribute)  // options from a relation, loaded once per render
-->loadRelationshipOptions(Model $record)             // pre-seed that list explicitly
+->relationship(?string $name, ?string $titleAttribute = null) // options from a relation, loaded once per render
+->loadRelationshipOptions(Model $record)                      // pre-seed that list explicitly
 ```

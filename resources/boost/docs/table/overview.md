@@ -1,5 +1,6 @@
 ---
 order: 10
+summary: "The table surface: the host trait, the query it builds, and the base configuration every column, filter and action sits on."
 ---
 
 # Wire Table
@@ -166,7 +167,7 @@ These are called from Alpine.js or Livewire directives in the Blade views:
 | `selectAll()` | "Select all" toggled |
 | `deselectAll()` | "Deselect all" clicked |
 | `expandRow($key)` | Row expand/collapse |
-| `toggleAllRowExpansion()` | Master expand/collapse (`toggleFlattenMode()` is a deprecated alias) |
+| `toggleAllRowExpansion()` | Master expand/collapse — moves the expansion baseline |
 | `executeAction($name, $key)` | Action button clicked |
 | `executeBulkAction($name)` | Bulk action clicked |
 | `updateCell($column, $key, $value)` | Inline edit committed |
@@ -224,7 +225,7 @@ $table->model(Order::class)->primaryKey('uuid');
 ->columns(array $columns)
 ```
 
-See [Columns Reference](columns/index.md) for all 13 column types.
+See [Columns Reference](columns/index.md) for all 19 column types.
 
 ### Filters
 
@@ -257,9 +258,40 @@ See [Filters Reference](filters/index.md) for all filter types.
 
 // Actions column fixed width
 ->actionsColumnWidth(string $width)          // e.g., '120px'
+
+// Keep the actions column at the table's edge while the rest scrolls sideways // [tl! focus:1]
+->stickyActions(bool $sticky = true)
 ```
 
-See [Actions](../core/actions.md) for the full Actions API.
+**Pinned actions column.** `stickyActions()` is the horizontal twin of
+`stickyHeader()`: the actions column stays against the edge of the table while
+the columns beside it travel underneath it. Which edge is not a second option —
+the column pins to the side it already sits on, so it follows
+`actionsPosition()`, and a table wide enough to scroll is the only one where any
+of it shows.
+
+The interesting part is that a pinned cell is **transparent** by default, so the
+columns it is meant to stay in front of would scroll straight through it. It is
+drawn as three layers instead: the cell takes the row's own background colour,
+an opaque surface is painted over that, and the row's colour is inherited back
+on top of the surface. That is what keeps the stripe, the hover tint and the
+selection visible inside the pinned column while everything else disappears
+behind it — the pane is part of the row, not a panel stuck beside it.
+
+```php
+->actions([Action::make('edit'), DeleteAction::make()])
+->stickyActions()                            // pinned right, following actionsPosition()
+
+->actionsPosition('start')
+->stickyActions()                            // now pinned left, divider on the other side
+```
+
+One thing it deliberately does not cover: a **full-width row** — a group header,
+an expanded sub-row panel, the empty state, a grand-total line — has no cell in
+the actions column, so nothing is pinned on it and its content scrolls through
+the pane's track.
+
+See [Actions](../core/actions/index.md) for the full Actions API.
 
 ### Search
 
@@ -400,7 +432,8 @@ two. The tiebreaker is skipped where a key is not a legal ordering term:
 ->perPage(int|string $perPage = 10) // [tl! focus:start]
 
 // Per-page dropdown options; a size may be the word 'all'
-->perPageOptions(array $options = [10, 25, 50, 100]) // [tl! focus:end]
+->perPageOptions(array $options = [10, 25, 50, 100])
+->perPageSelector(bool $show = true)   // draw the page-size control at all // [tl! focus:end]
 
 // Simple pagination — no COUNT(*) query, just Previous/Next
 ->simplePagination()
@@ -482,6 +515,9 @@ selection-scope totals stay live.
 // Table/cell borders
 ->bordered(bool $bordered = true)
 
+// Keep the column headers in view while the rows scroll under them // [tl! focus:1]
+->stickyHeader(bool $sticky = true, string $maxHeight = '70vh')
+
 // Custom CSS class on <table> element
 ->tableClass(string $class)
 
@@ -493,7 +529,53 @@ selection-scope totals stay live.
 
 // Tint the whole row with a semantic color, static or computed per record
 ->rowColor(string|Closure|null $color)
+
+// Mark records inactive: dimmed, optionally struck through, and not writable
+->rowInactive(bool|Closure $when = true, Closure|InactiveRow|null $configure = null)
 ```
+
+**Sticky header.** `stickyHeader()` pins the `<thead>` so the column labels stay
+readable through a long list. It also caps the height of the region the rows
+scroll in, and that is not a second, separable option — it is what makes the
+first one work. A sticky element pins to its nearest scrolling ancestor, and the
+table already has one: the wrapper carries `overflow-x: auto` for the horizontal
+case, and CSS computes the other axis to `auto` alongside it. A scrollport the
+size of its content never scrolls, so a header pinned inside an uncapped one has
+nothing to stay behind and never moves. Name your own cap when `70vh` does not
+suit the page:
+
+```php
+->stickyHeader()                    // 70vh of rows under a pinned header
+->stickyHeader(maxHeight: '32rem')  // any CSS length
+```
+
+The cap is written as an inline `max-height`, not a class, so an arbitrary
+length needs nothing from Tailwind's extractor. Turning the header off with
+`stickyHeader(false)` lifts the cap with it, whatever height was named.
+
+**Scroll edges.** A region that clips does it in silence — `overflow` draws
+nothing at the edge it cuts, so a table three screens wide looks, at rest,
+exactly like a table that fits: a whole actions column off-screen with no sign
+that it is there, and, under a sticky header, a last visible row sliced through
+the middle with nothing to say more follow.
+
+What says so is the region's own scrollbar, and the framework's only part in it
+is to stop the platform hiding one. macOS and iOS draw an *overlay* scrollbar
+that fades out a second after the last scroll, so a table nobody has touched
+shows nothing at all — the one moment the hint is needed. The scroll region
+declares `::-webkit-scrollbar`, which is what opts an element out of the overlay
+scrollbar and back onto a classic one: painted for as long as the content
+overflows, absent when it does not. It takes no configuration, and a table that
+fits shows none.
+
+That is deliberately a scrollbar and not a shading over the edges, which is what
+earlier versions drew. A gradient says only *there is more*; a scrollbar says how
+much more, where in it you are, and moves the table when you drag it. It also
+dims nothing — the three overlays sat over the pinned header row, the rules
+between rows and the first characters of the first column.
+
+A table cut on the horizontal axis can also keep one column in view rather than
+only marking the cut — see `stickyActions()` under [Actions](#actions).
 
 **Conditional row color.** `rowColor()` tints an entire row using the same
 semantic palette as badges and every other surface (`success`, `warning`,
@@ -522,6 +604,22 @@ be combined on the same table:
 ->rowClass(fn (Invoice $r) => $r->isOverdue() ? 'font-semibold' : null)
 ```
 
+**Inactive records.** A cancelled, voided or archived record stays in the list
+and stops being writable: `rowInactive()` dims the row, locks every inline
+editor on it — server-side, so a forged write is refused too — and optionally
+strikes its text through or tints it. Its actions, its checkbox and a click that
+opens it keep working unless you say otherwise:
+
+```php
+->rowInactive(
+    fn (Invoice $r) => $r->status === 'cancelled',
+    fn (InactiveRow $row) => $row->strikethrough()->color('danger'),
+)
+```
+
+The whole state, including the two optional locks, is in
+[Inactive Records](inactive-records.md).
+
 ### Record URL (Clickable Rows)
 
 ```php
@@ -537,6 +635,9 @@ be combined on the same table:
 ### Responsive Layout
 
 ```php
+->layout(TableLayout|string $layout)   // 'table' (default) | 'list' — rows, or cards at every width   // [tl! focus]
+->listHeading(?Closure $heading)        // fn ($record) => 'Today' — day dividers for the list layout
+
 // Stack columns vertically on mobile; 2nd arg is the breakpoint (default 'md')
 ->stackedOnMobile(bool $stacked = true, string $breakpoint = 'md')   // 'sm','md','lg','xl'
 ->bulkMaxRecords(?int $max)                                          // rows one bulk action may load (default 1000, null = no cap)
@@ -665,6 +766,11 @@ $table->lazy()
 
 // Process records in chunks (for bulk operations)
 ->chunk(int $size, Closure $callback)
+
+// Answer a write with the regions it moved — the row, its card, the totals,
+// its group's subtotal — instead of re-rendering the table
+->rowPartials(bool $condition = true)
+->usesRowPartials(): bool
 ```
 
 ```php
@@ -673,6 +779,10 @@ $table->cacheQuery(60);
 
 // Custom cache key
 $table->cacheQuery(300, 'users-table');
+
+// A cell save answers with that row (49.3 ms → 3.2 ms on a 25×20 page). The row
+// keeps its position until the next full render — see Advanced → Row Partials.
+$table->rowPartials();
 ```
 
 ### Notifications
@@ -716,8 +826,8 @@ use NyonCode\WireTable\Columns\ToggleColumn;
 
 $table->columns([
     TextInputColumn::make('name')
-        ->rules(['required', 'string', 'max:255'])
-        ->saveOnBlur(),
+        ->rules(['required', 'string', 'max:255'])   // [tl! focus:start]
+        ->saveOnBlur(),                              // [tl! focus:end]
 
     SelectColumn::make('status')
         ->options([
@@ -725,7 +835,7 @@ $table->columns([
             'review' => 'In Review',
             'published' => 'Published',
         ])
-        ->rules(['required', 'in:draft,review,published']),
+        ->editableRules(fn (): array => ['required', 'in:draft,review,published']),  // [tl! focus]
 
     ToggleColumn::make('is_featured')
         ->onColor('success')
@@ -856,11 +966,43 @@ class UserTable extends Component
 
 ---
 
+## Adjusting A Table You Do Not Own
+
+Four plugin hooks fire around a table, and **which one you want depends on what
+you are changing** — the pair at the top is not two names for one moment:
+
+| Hook | Runs on | Reach for it to |
+|---|---|---|
+| `table.composing` | the composed `Table` instance, once per host | **add or remove a column or filter** |
+| `table.configuring` | the arrays `TableQueryService` is about to hand the planner | steer what is searched and sorted |
+| `table.querying` | after the plan is built, before it runs | force a sort, inspect the plan |
+| `table.queried` | after every pipe has applied | observe the finished query |
+
+```php
+$manager->hook(Hook::TableComposing, function (TableComposingPayload $payload) {
+    $payload->columns = [...$payload->columns, TextColumn::make('internal_note')]; // [tl! focus]
+
+    return $payload;
+}, for: 'invoices');
+```
+
+**A column added through `table.configuring` is never rendered.** That hook runs
+inside the query service on the planner's copy, so the column is searched and
+sorted on and never drawn — which is the whole reason `table.composing` exists. It
+runs on the instance the host built, next to the line that gives the table its
+component, so a column added there is a column the user sees.
+
+`for:` narrows a callback to one table: the registered key of the resource a page
+shows, the host component's class, or the model. Without it a callback runs for
+every table in the application. See [Hooks](../core/plugins/hooks.md).
+
+---
+
 ## Related Documentation
 
 | Document | What It Covers |
 |----------|---------------|
-| [Columns](columns/index.md) | All 13 column types — TextColumn, BadgeColumn, BooleanColumn, IconColumn, ImageColumn, ButtonColumn, ToggleColumn, SelectColumn, TextInputColumn, StackedColumn, SplitColumn, PollColumn |
+| [Columns](columns/index.md) | All 19 column types — TextColumn, BadgeColumn, BooleanColumn, IconColumn, ImageColumn, ButtonColumn, ToggleColumn, SelectColumn, TextInputColumn, CheckboxColumn, StackedColumn, SplitColumn, TagsColumn, ColorColumn, MoneyColumn, MetricColumn, PhoneColumn, RatingColumn, PollColumn |
 | [Filters](filters/index.md) | SelectFilter, DateFilter, NumberRangeFilter, TernaryFilter, custom filters, column-level filters |
 | [Exports](exports.md) | CSV, Excel, and PDF exports for the current table query |
 | [Imports](imports.md) | CSV imports — header mapping, casting, per-row validation, updateExisting |
@@ -869,4 +1011,4 @@ class UserTable extends Component
 | [Selecting Rows](selection.md) | Checkboxes, select-all-matching, and the selection gestures |
 | [Record Actions](record-actions.md) | Whole-row click, double-click, right-click and key bindings |
 | [The Gesture Layer](gestures.md) | `gestures()` — the opt-in keyboard/drag layer, and the mobile button fallback |
-| [Actions](../core/actions.md) | Full Action system — modals, forms, wizard steps, lifecycle |
+| [Actions](../core/actions/index.md) | Full Action system — modals, forms, wizard steps, lifecycle |

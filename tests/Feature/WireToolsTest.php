@@ -6,6 +6,8 @@ use NyonCode\WireBoost\Mcp\Tools\ApplicationInfo;
 use NyonCode\WireBoost\Mcp\Tools\DescribeComponentApi;
 use NyonCode\WireBoost\Mcp\Tools\DescribeForm;
 use NyonCode\WireBoost\Mcp\Tools\DescribeInfolist;
+use NyonCode\WireBoost\Mcp\Tools\DescribeModule;
+use NyonCode\WireBoost\Mcp\Tools\DescribeResource;
 use NyonCode\WireBoost\Mcp\Tools\DescribeTable;
 use NyonCode\WireBoost\Mcp\Tools\ListComponentTypes;
 use NyonCode\WireBoost\Mcp\Tools\ListIcons;
@@ -13,16 +15,38 @@ use NyonCode\WireBoost\Mcp\Tools\ListWireComponents;
 use NyonCode\WireBoost\Mcp\Tools\SearchDocs;
 use NyonCode\WireBoost\Mcp\Tools\WireConfig;
 use NyonCode\WireBoost\Mcp\WireBoostServer;
+use NyonCode\WireBoost\Support\WirePackages;
 use NyonCode\WireBoost\Tests\Fixtures\DemoForm;
 use NyonCode\WireBoost\Tests\Fixtures\DemoInfolist;
 use NyonCode\WireBoost\Tests\Fixtures\DemoTable;
+use NyonCode\WireCore\Core\Modules\Module;
+use NyonCode\WireCore\Core\Plugin\Contracts\HasDependencies;
+use NyonCode\WireCore\Core\Plugin\PluginManager;
+use NyonCode\WireCore\Core\Resources\Concerns\DescribesRecords;
+use NyonCode\WireCore\Core\Resources\Contracts\DescribesResource;
+use NyonCode\WireCore\Core\Resources\Navigation\NavigationGroup;
+use NyonCode\WireCore\Core\Resources\ResourceRegistry;
 use NyonCode\WireCore\Foundation\Icons\IconManager;
+use NyonCode\WireCore\Infolists\Components\TextEntry;
+use NyonCode\WireCore\Infolists\Contracts\ProvidesResourceInfolist;
+use NyonCode\WireCore\Infolists\Infolist;
 
 it('reports application info with wire package versions', function () {
     WireBoostServer::tool(ApplicationInfo::class)
         ->assertOk()
         ->assertSee('nyoncode/wire-core')
         ->assertSee('livewire/livewire');
+});
+
+it('reports the whole stack, not only the four packages 1.x shipped', function () {
+    // The list used to be a literal inside the tool, so `wire-panels` stayed
+    // unreported long after it shipped — and an agent told a package is absent
+    // writes around an API that is right there.
+    $response = WireBoostServer::tool(ApplicationInfo::class)->assertOk();
+
+    foreach (['wire-panels', 'wire-admin', 'wire-suite', 'wire-module-users', 'wire-module-auth'] as $package) {
+        $response->assertSee(WirePackages::composerName($package));
+    }
 });
 
 it('lists wire components from the configured scan paths', function () {
@@ -50,6 +74,81 @@ it('describes an infolist component', function () {
     WireBoostServer::tool(DescribeInfolist::class, ['component' => DemoInfolist::class])
         ->assertOk()
         ->assertSee('IconEntry');
+});
+
+it('describes the registered resources', function () {
+    app(ResourceRegistry::class)->register(WtOrderResource::class);
+
+    WireBoostServer::tool(DescribeResource::class)
+        ->assertOk()
+        ->assertSee('wt-orders')
+        ->assertSee('infolist');
+});
+
+it('describes one resource by key', function () {
+    app(ResourceRegistry::class)->register(WtOrderResource::class);
+
+    WireBoostServer::tool(DescribeResource::class, ['resource' => 'wt-orders'])
+        ->assertOk()
+        ->assertSee('Wt Order');
+});
+
+/**
+ * Register modules into a manager that has not booted yet.
+ *
+ * The application's own booted while its providers did, and registering into a
+ * booted manager is refused — a plugin arriving that late is never booted and
+ * its declarations never reach the registries, so it would look installed and
+ * do nothing. Binding a fresh one puts these tests in the phase a package
+ * provider registers from.
+ */
+function wtRegisterModules(object ...$modules): void
+{
+    $manager = new PluginManager;
+    app()->instance(PluginManager::class, $manager);
+
+    foreach ($modules as $module) {
+        $manager->register($module);
+    }
+}
+
+it('describes the registered domain modules', function () {
+    // The one thing no other tool can show: which business area a resource
+    // belongs to. describe-resource lists resources and knows nothing about it.
+    wtRegisterModules(new WtBillingModule);
+
+    WireBoostServer::tool(DescribeModule::class)
+        ->assertOk()
+        ->assertSee('wt-billing')
+        ->assertSee('Billing')
+        ->assertSee(WtOrderResource::class);
+});
+
+it('describes one module by id, with what it depends on', function () {
+    wtRegisterModules(new WtBillingModule, new WtOperationsModule);
+
+    WireBoostServer::tool(DescribeModule::class, ['module' => 'wt-operations'])
+        ->assertOk()
+        ->assertSee('wt-billing');
+});
+
+it('says which modules exist when asked for one that does not', function () {
+    wtRegisterModules(new WtBillingModule);
+
+    WireBoostServer::tool(DescribeModule::class, ['module' => 'nope'])
+        ->assertOk()
+        ->assertSee('wt-billing');
+});
+
+it('says which resources exist when asked for one that does not', function () {
+    // Better than an empty answer: the developer is usually one typo away, and
+    // the registered keys are the shortest way to show it.
+    app(ResourceRegistry::class)->register(WtOrderResource::class);
+
+    WireBoostServer::tool(DescribeResource::class, ['resource' => 'nope'])
+        ->assertOk()
+        ->assertSee('No resource is registered')
+        ->assertSee('wt-orders');
 });
 
 it('lists component types for a category', function () {
@@ -132,3 +231,50 @@ it('searches the wire documentation corpus', function () {
     WireBoostServer::tool(SearchDocs::class, ['query' => '  '])
         ->assertOk();
 });
+
+/** A resource for the describe-resource tool: identity plus one surface. */
+class WtOrderResource implements DescribesResource, ProvidesResourceInfolist
+{
+    use DescribesRecords;
+
+    public static function modelClass(): ?string
+    {
+        return null;
+    }
+
+    public function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([TextEntry::make('number')]);
+    }
+}
+
+final class WtBillingModule extends Module
+{
+    public function getId(): string
+    {
+        return 'wt-billing';
+    }
+
+    public function resources(): array
+    {
+        return [WtOrderResource::class];
+    }
+
+    public function navigation(): ?NavigationGroup
+    {
+        return NavigationGroup::make('wt-billing')->label('Billing')->sort(10);
+    }
+}
+
+final class WtOperationsModule extends Module implements HasDependencies
+{
+    public function getId(): string
+    {
+        return 'wt-operations';
+    }
+
+    public function dependencies(): array
+    {
+        return ['wt-billing'];
+    }
+}

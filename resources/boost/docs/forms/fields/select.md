@@ -1,3 +1,7 @@
+---
+summary: A dropdown over static or queried options, with server-side search, multi-select and create-on-the-fly.
+---
+
 # Select
 
 Dropdown select with static or dynamic options, search, and multi-select.
@@ -9,7 +13,7 @@ use NyonCode\WireForms\Components\Select;
 > **Mobile.** The dropdown/search panel opens as a bottom sheet below the
 > configured breakpoint (searchable selects stay a floating panel by default so
 > the search box stays usable). Override per field with `->sheetOnMobile()` /
-> `->mobileBreakpoint('md')` — see [mobile presentation](../../configuration.md#mobile).
+> `->mobileBreakpoint('md')` — see [mobile presentation](../../start/configuration.md#mobile).
 
 ## Basic Usage
 
@@ -322,7 +326,7 @@ Select::make('tier')
 | `loadingMessage(string\|null)` | string | Message while options are loading |
 | `searchPrompt(string\|null)` | string | Prompt shown in the search box |
 | `boolean()` | — | Shorthand for Yes/No options |
-| `relationship(string, string)` | — | Load options from a relationship |
+| `relationship(?string, ?string)` | — | Load options from a relationship |
 | `getSearchResultsUsing(Closure)` | — | Remote search: resolve matches on the server (implies `searchable()`) |
 | `getOptionLabelUsing(Closure)` / `getOptionLabelsUsing(Closure)` | — | Resolve label(s) for the current selection |
 | `preload()` | bool | Eagerly seed the remote option list on render |

@@ -51,6 +51,11 @@ Row, header and bulk actions are objects with a fluent API and lifecycle hooks:
   `Actions\Concerns\InteractsWithActions` (form-agnostic, here in wire-core) and the wire-forms
   form bridge; `WithTable` composes the same engine. Extend it rather than reimplementing action
   handling on a component.
+- **A halt needs none of that.** `Actions\Concerns\InteractsWithHalt` is "stop, ask, continue" on its own:
+  `$this->halt($halt, then: 'method', arguments: [...])` from any method, plus
+  @verbatim`<x-wire-actions::halt-host />`@endverbatim (a host rendering the modal host already draws it).
+  The resume is a **method name and scalars**, never a closure — a halt is answered on a later request than
+  the one that raised it. Without wire-forms a halt has no fields; its declared rules are still checked.
 
 ### Modals
 
@@ -68,6 +73,12 @@ For a **standalone** modal in your own view use the component tag —
 Htmlable render object: @verbatim`{{ new NyonCode\WireCore\Modals\Html\Modal(heading: '…', wireModel: 'show', body: $form) }}`@endverbatim.
 Both render the same shell. (Three families under `Modals\`: `Html\*` = Htmlable render objects,
 `Modals\Modal` etc. = config, `Modals\View\*Component` = the Blade components — don't conflate.)
+
+Either form works inside your own `@@island`. Livewire renders a targeted island without the shared
+`$__livewire` a full render has, and these modals build their view from an explicit data array, so
+`@@entangle` and `@@this` would otherwise fail with `Undefined variable $__livewire` — wire-core
+restores that scope for the duration of an island render, so you do not have to. This applies to any
+view you render from PHP inside an island, not only these.
 
 ### Mobile sheets
 
@@ -97,14 +108,167 @@ Standalone Blade tags mirror them for plain views: `<x-wire::grid>`, `<x-wire::f
 The standalone tabs/wizard are client-side only (no per-step validation) — use action-modal wizards or
 form schema for validated flows.
 
+### Workflow / state machine
+
+`WorkflowState::for(StatusEnum::class)->column('status')->allow($from, $to)->guard($to, fn)->after($to, fn)`.
+A **seam, not an engine** (ADR 0018): it owns states, edges, guards and side effects, and delegates every
+meaning — no process definitions, no approval modelling, no scheduler. Transitions save through the ordinary
+path, so tenant scoping and audit come along without rewiring.
+
+**Never add colour/label/icon here.** The status is an enum implementing `Enum\HasColor`/`HasLabel`/`HasIcon`
+and `BadgeColumn` already renders it — a second map is a parallel vocabulary that drifts. (This is also why
+`StatusColumn` was never built: `BadgeColumn` covers it.)
+
+**Two refusals, deliberately different.** An illegal edge **throws** — silence leaves a record where the user
+believes it moved on. A guard veto returns **false** — "not yet" is a domain answer, not a broken machine.
+Guards on one state must *all* pass (separate rules; `&&`-ing them loses which said no). `after()` runs after
+persistence, so a hook cannot fire for a save that rolls back. `allow()` takes a list of origins because
+"anything up to here may be cancelled" is the common shape.
+
+`TransitionAction::to($state)->workflow($machine)` is an ordinary action that does two more things by itself,
+so **no surface needs to know a workflow exists**: it hides where the move would not work (`isHidden($record)`,
+which every action surface already asks, and `canExecute($record)` before running), and pressing it performs
+the transition (attaching a machine sets the action callback; an explicit `->action()` still wins, either
+order). `isAvailableFor($record, $user)` answers the machine's half alone. An action for a transition the user
+cannot complete exists to be refused, and an unpredictable refusal reads as an application bug. Label / colour
+/ icon come from the target enum via the same resolution BadgeColumn uses, so button and badge cannot
+disagree; `->visible()` and the machine's answer stay separate so neither overrules the other, and a
+record-less check leaves the machine out of it.
+
+## Domain modules
+
+A **domain module** is the second axis — `billing` beside `operations` — and it is a **plugin**, not a parallel
+registration system: it registers from `config('wire-core.plugins')` when an application declares it, or from a
+package provider's `$this->app->resolving(PluginManager::class, …)` when a package ships one; `PluginManager` gives it one id, the
+register-then-boot lifecycle and `dependencies()` checking, and **there is deliberately no ModuleRegistry**
+(that list already exists). `DomainModule` only *declares* — `resources()`, `dashboards()`,
+`navigation(): ?NavigationGroup` — and `WireCoreServiceProvider::bootModules()` spreads those into the three
+registries. **Never make a module reach for `DashboardRegistry` itself**: a dashboard is L2 and the module
+contract is L1, so naming classes is what keeps the layer test green. Not a module's job: workflows (the
+resource carries one), policies (Laravel's Gate), workspaces (a service over the registries). `describe-module`
+reports what each declares. **A package adds, it never overwrites**: two classes on one key are refused, so an
+application adjusts a shipped module through a **`table.composing`** / **`form.configuring`** /
+**`infolist.configuring`** hook scoped with `for: '<key>'`, never by subclassing its resource (a subclass keeps
+the parent's key).
+
+### Plugins and hooks
+
+A plugin is `getId()` + `register(PluginManager)` + `boot(PluginManager)`, registered from
+`config('wire-core.plugins')` or from a package provider's **register** phase. `register()` must not resolve
+services (they may not be bound yet); `boot()` runs after every plugin is registered — and **closes
+registration**: `PluginManager::register()` after `boot()` throws `PluginRegistrationException`, because a
+plugin arriving then is never booted and a module's declarations never reach the registries. Never register a
+plugin in a provider's `boot()`, and never defer a provider that registers one. A config entry that cannot be a
+plugin is refused too (blank strings excepted), rather than skipped. `HasDependencies::dependencies()` lists ids that must already be registered —
+checked at registration, so **list a dependency before its dependant in config** or registration throws.
+`HasConfiguration` merges `defaultConfig()` under `wire-core.plugins.config.{id}`.
+
+**A hook does nothing until something runs it.** `hook('name', $cb)` stores a callback; behaviour changes only
+where a `runHook()` / `runTypedHook()` call exists. Callbacks run by ascending priority; an array-hook callback
+returning an array replaces the payload, anything else leaves it unchanged. Names come from the `Hook` enum
+(strings still accepted). **`table.composing` ≠ `table.configuring`**: composing runs once on the table instance
+the host built (a column added there renders), configuring runs in `TableQueryService` on arrays the planner
+consumes (a column added there is searched and sorted on and never drawn). `form.configuring` is the form's
+composing hook, `infolist.configuring` the detail page's. Eight hooks are **typed-only** — those three plus
+`widget.configuring` (before widget keys are stamped and before visibility filters), `export.configuring` (in
+`buildTableExport()`, so a download and a queued file are one export), `navigation.building` (the flat entry
+list, before grouping), `page.mounting` (last in a resource page's mount, so the record is resolved) and
+`search.querying` (per resource, before `get()` and before the policy check). No array counterpart, and new
+hooks stay that way. `hook(..., for: 'invoices' | Model::class | Page::class)` scopes a callback to one
+component through the payload's `HookTarget`; a scoped callback is skipped when a dispatch carries no target.
+Two hooks belong to no component and name something else: `navigation.building` takes a **zone**,
+`search.querying` the searched resource's catalogue key. **Never write the container/`hasHook()` guard by
+hand** — `HookDispatch::typed($hook, fn () => new …Payload(…))` owns it, and its `null` means "nobody
+listened", never "nothing changed" (folding the two with `??` undoes a callback that emptied the array).
+
+**The rule that cost this repo a defect: the first parameter's type hint decides which dispatcher a callback
+belongs to.** Every built-in lifecycle point (`table.configuring|querying|queried`, `form.saving|saved`,
+`action.executing|executed`) runs **both** dispatchers back to back, so each callback must belong to exactly
+one:
+
+| First parameter | Dispatcher | Receives |
+|---|---|---|
+| `array` | `runHook()` | the payload array |
+| a DTO (`TableQueryingPayload`, `FormSavingPayload`, …) | `runTypedHook()` | the object |
+| **no type hint, or no parameter** | `runHook()` | the array — **never the DTO** |
+
+**Always type-hint the first parameter.** An unhinted `function ($payload)` used to answer "no" to both
+questions, so *both* dispatchers ran it: every side effect happened twice, and the second pass handed it a DTO
+where `$payload['data']` fatals — after the callback had already done its work. Unhinted now falls to the array
+side deliberately, because that is what a callback written before DTOs existed expects.
+
+**Do not reach for a hook to enforce something.** A hook covers one path and only while a PluginManager is
+bound. Security-shaped behaviour belongs lower: tenancy is a global scope, not a `table.querying` hook — see
+below.
+
+### Multi-tenancy
+
+Off by default (`wire-core.tenancy.enabled`), **strict once on**. Bind a `TenantResolver`; the shipped default
+answers null. Mark models with `BelongsToTenant` — opt-in per model, because the framework cannot know which
+tables are tenant-owned and guessing would be a guess about who may see what.
+
+**The fail-safe is the whole story: tenancy on with no tenant resolved returns NOTHING, never everything.**
+Every ordinary state produces a null tenant (before login, a worker, a console command), so reading null as "no
+constraint" hands every row to every one of them. The scope emits `0 = 1`. It is deliberately **not**
+`where tenant_id is null` either — an unowned row would then be visible to everybody.
+
+**A non-Eloquent source builds no query, so no scope reaches it** — wrap it: `new TenantScopedDataSource($source, app(Tenancy::class))`. It constrains the **plan**, not the returned rows, which is what makes it safe on `count()` and `paginate()` too (those answer without handing rows over) and lets a source that cannot honour the filter refuse out loud. `resolveRecord()` takes a key rather than a plan, so there the record is fetched and checked — without that a tenant reaches another tenant's row by typing its id into a URL. Same fail-safe, and tenancy off delegates untouched.
+
+**A global scope, not a plugin hook.** A hook covers one read path and only while a PluginManager is bound; a
+global scope covers every query Eloquent builds — a listing, a relation, `find()` in the app's own controller,
+`update()`, `delete()`, and a queued job resolving by key. `create()` is attributed to the current tenant and
+**throws** when none resolves, because a row with a null tenant is invisible to every scoped query afterwards:
+the user's work is gone and nothing said so. An explicitly set column is left alone (seeder, deliberate move).
+The column is qualified — a scoped model is routinely joined and joined tables carry their own `tenant_id`.
+
+`Model::acrossAllTenants()` steps past it, verbosely and greppably, for admin reports and console commands.
+**Not covered:** a non-Eloquent `DataSource` has no Eloquent query to scope — constrain it in the source.
+
+Resolve `Tenancy` per query, never hold it: a global scope is added once per model class per process, so a
+captured instance answers with whoever was current the first time that model was touched — wrong on the second
+Octane request and every job after the first.
+
+### Queued actions
+
+`->queue()` / `->onQueue('reports')` / `->onConnection('redis')` on any action (naming a queue or connection
+implies `->queue()`). **Default stays synchronous and should** — a user clicking Delete expects the row gone on
+return; this is for the long tail (bulk over ten thousand rows, an export that would time out).
+
+**The job carries names and keys, never objects**: host class, action name, record keys, form data — all
+scalars. Not the action (closures), not models (stale by the time a worker takes them; ten thousand would be a
+megabyte of payload). It rebuilds the host, calls `resolveActionByName()`, and reads records fresh via
+`resolveRecordsByKey()` — so a row edited between click and run is acted on **as it is at run time**. A single
+key still arrives as `$record`, a set as `$records`.
+
+**A queued action has no browser.** `$set` / `$setParent` / `$setFrame` / `$close` / `$replace` / `$halt` are
+bound to **throw** `QueuedActionException`, never to no-op — a silent `$close()` looks like it worked and
+surfaces weeks later as "the modal never closes". Report back with a notification; that is what the database
+driver is for, since the request that queued the job is gone by then. An action renamed or removed between
+dispatch and run throws too.
+
+`RunActionJob` reaches Notifications by class name, not import: both are L2 and ADR 0025 forbids L2→L2 — the
+same soft seam `HasLifecycle::resolveNotificationManagerClass()` uses.
+
 ### Notifications
 
 `Notification` is an immutable value object dispatched through a driver (current-component, session, livewire,
-flasher, null), selected by `wire-core.notifications.default`. The built-in default is `CurrentComponentDriver`
+flasher, **database**, null), selected by `wire-core.notifications.default` — which takes a **list** as well as
+a string, so `['session', 'database']` shows the toast *and* keeps it in the bell (a `StackDriver` fans out;
+one driver throwing does not silence the rest, and the failure is re-thrown after all have had their turn). The built-in default is `CurrentComponentDriver`
 (decorates `SessionDriver`): it resolves the active Livewire component via `Livewire::current()` itself, so
 `NotificationManager::send($notification)` and the `InteractsWithNotifications`/`sendNotification` helpers no
 longer thread `$this`. A custom per-component driver that needs the component must wrap itself in
 `CurrentComponentDriver`.
+
+**Persistent notifications.** The transient drivers deliver to the page being rendered — useless for a queued
+export finishing twenty minutes later, when there is no component to dispatch to. `DatabaseDriver` writes the
+row instead; `NotificationCenter` reads it and `@@livewire('wire-notification-bell')` renders it. Every read is
+scoped to the recipient resolved by `ResolvesNotifiable` (default: the authenticated user), **`markAsRead($id)`
+included** — the id comes from a Livewire action, so an unscoped lookup would let one user mark another's
+notification read. With no recipient the driver writes **nothing** rather than storing an unreachable row,
+which is the ordinary state on a queue worker; bind your own resolver when a job must address someone. The
+table matches Laravel's `notifications` shape so an app can share its own, and the id is a **ULID** in that
+uuid column: a bulk job puts five rows in one second, where `created_at` alone orders them arbitrarily.
 
 Fluent `Notification`: `->title()`, `->duration(ms)`, `->icon()`, `->position()`, `->persistent()` (sticky,
 duration 0, no countdown bar), and `->action('Undo', 'event')` / `->action(NotificationAction::make(...))` —
@@ -113,9 +277,11 @@ supports `->payload([...])`, `->color()`, `->keepOpen()`. The built-in drivers f
 titles/actions/persistence survive the server round-trip.
 
 Toast container: @verbatim`<x-wire-notifications::toast-container />`@endverbatim — props `position`, `duration`, `event-name`,
-`stack` (collapse into a pile that fans out on hover), `progress` (per-toast countdown bar, hover pauses it and
-the auto-dismiss), `max` (cap visible toasts, overflow into a "+N more" pill). Honors `prefers-reduced-motion`
-and exposes an `aria-live` region.
+`session-key`, `stack` (collapse into a pile that fans out on hover), `progress` (per-toast countdown bar, hover
+pauses it and the auto-dismiss), `max` (cap visible toasts, overflow into a "+N more" pill). Honors
+`prefers-reduced-motion` and exposes an `aria-live` region. It renders the flashed notification too, which is how
+a toast raised by a request that then redirected — `successRedirect()`, a create page landing on its new record —
+is shown at all: the event died with the document, the flash crossed.
 
 ### Infolists
 
@@ -180,6 +346,7 @@ declares its own bundles in its own `configure()`; core never learns about downs
 
 ```php
 $packager
+    ->bootedPackage(fn () => Bundle::serve('wire-table', self::ASSETS_PATH))
     ->hasAssets('dist', entries: [
         Bundle::make('wire-table-records.js'),
     ])
@@ -196,6 +363,14 @@ Entries are keyed by the **shipped filename**, not a short id. Delivery is the t
 copies `dist/` into `public/vendor/{package}` on first resolve — no `vendor:publish`, no build step
 for consumers — and `hasAssetFallback()` points at the package's own `{package}.asset` route for the
 app whose `public/` cannot be written. Without that fallback the renderer drops the tag silently.
+
+**`Bundle::serve()` registers that route — never hand-write it.** It is the other half of the same
+mapping: `servedByRoute()` reads a bundle id off a shipped filename to build the URL, `serve()`
+turns that id back into the file, and one class owning both is what keeps them from drifting. It
+carries the parts a hand-written `Route::get` gets wrong — a 404 rather than a 500 for a bundle the
+package does not ship, an `[A-Za-z0-9_-]+` id pattern, and the immutable cache header that stops a
+fallback the renderer reaches on every page from costing a request every page. Name the bundle
+`{package}-{id}.js`, after the package itself, or anything else: all three round-trip.
 
 **Register Alpine components unconditionally, never only inside `alpine:init`.** That event fires
 exactly once per document, so a bundle arriving later (SPA navigation, a lazily rendered table, an
@@ -216,6 +391,15 @@ else document.addEventListener('alpine:init', register)
 
 The `registered` guard is load-bearing, not defensive: the directive and a per-surface partial can
 both emit the same `src`, so the bundle may execute twice.
+
+**Declaring the entry is not enough — the surface still has to include its own `@@assets` partial.**
+`@@wireStackScripts` is *additive*: an app that never puts it in a layout is supported, and then the
+declaration delivers nothing. A view whose `x-data` calls a factory from a bundle nobody delivered
+evaluates against an empty registry and the component silently does nothing — no exception, no
+console error at the point of the mistake. This is invisible to PHP tests, which read the markup and
+find it correct; only `npm run verify:drivers` catches it. So a new controller bundle needs both: the
+`Bundle::make()` entry, and an `@@assets`/`@@packageScripts` partial included from every view that
+uses it (`wire-core::partials.floating-assets`, `wire-forms::partials.field-assets`).
 
 Core interaction controllers are **never** lazy per-component — that is what causes the bug above.
 Lazy is for heavy, optional bodies only: TipTap is the one case, and it stays outside the entry list

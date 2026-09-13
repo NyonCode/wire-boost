@@ -14,6 +14,8 @@ use NyonCode\WireBoost\Mcp\Tools\DatabaseSchema;
 use NyonCode\WireBoost\Mcp\Tools\DescribeComponentApi;
 use NyonCode\WireBoost\Mcp\Tools\DescribeForm;
 use NyonCode\WireBoost\Mcp\Tools\DescribeInfolist;
+use NyonCode\WireBoost\Mcp\Tools\DescribeModule;
+use NyonCode\WireBoost\Mcp\Tools\DescribeResource;
 use NyonCode\WireBoost\Mcp\Tools\DescribeTable;
 use NyonCode\WireBoost\Mcp\Tools\FetchDoc;
 use NyonCode\WireBoost\Mcp\Tools\GetAbsoluteUrl;
@@ -36,9 +38,15 @@ class WireBoostServer extends Server
     protected string $version = '1.0.0';
 
     protected string $instructions = <<<'MARKDOWN'
-    WireStack Boost exposes tools for building applications with the wireStack ecosystem
-    (wire-core, wire-forms, wire-table, wire-sortable) — fluent, Nova/Filament-style Livewire
-    tables, forms and infolists.
+    WireStack Boost exposes tools for building applications with the wireStack ecosystem —
+    fluent, Nova/Filament-style Livewire tables, forms and infolists.
+
+    The stack is wire-core -> wire-forms -> wire-table -> wire-sortable, with two optional
+    layers above it: wire-panels (resources, pages, navigation) and wire-admin (the layout
+    and sidebar). Six ready-made areas ship as their own packages — wire-module-auth, -users,
+    -settings, -audit, -notifications and -media — and wire-suite installs the lot with
+    `php artisan wire:install`. Call `application-info` first: it reports which of these the
+    application actually has, and an API from a package that is not installed does not exist.
 
     Before writing wire code:
     - `search-wire-docs` to find the relevant documentation section, then `fetch-wire-doc` with a
@@ -47,6 +55,8 @@ class WireBoostServer extends Server
       filters, actions, entries and widgets, their fluent methods and the values they accept.
     - `list-wire-components`, `describe-table`, `describe-form`, `describe-infolist` to inspect
       the components already present in the application.
+    - `describe-resource` and `describe-module` for the owner layer above them — which entities
+      are registered, the surfaces each declares, and which module brought them.
     - `list-icons` for valid icon names, `wire-config` for effective configuration.
 
     After writing or editing a wire component:
@@ -67,6 +77,8 @@ class WireBoostServer extends Server
         DescribeTable::class,
         DescribeForm::class,
         DescribeInfolist::class,
+        DescribeResource::class,
+        DescribeModule::class,
         ValidateComponent::class,
         ListComponentTypes::class,
         DescribeComponentApi::class,

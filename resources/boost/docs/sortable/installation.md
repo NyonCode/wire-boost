@@ -1,6 +1,7 @@
 ---
 title: Installation
 order: 20
+summary: What the sortable package needs, what it adds to a table, and the asset it puts on the page.
 ---
 
 # Installation
@@ -10,10 +11,10 @@ order: 20
 | Dependency | Version |
 |---|---|
 | PHP | ^8.2 |
-| Laravel | ^10.0 / ^11.0 / ^12.0 / ^13.0 |
-| Livewire | ^3.0 |
-| wire-core | ^0.1 |
-| wire-table | ^0.1 |
+| Laravel | 12.61+ or 13.12+ |
+| Livewire | ^4.0 |
+| wire-core | ^2.0 |
+| wire-table | ^2.0 |
 | Tailwind CSS | ^3.0 / ^4.0 |
 
 ## Install via Composer
@@ -73,7 +74,7 @@ enough:
 - `@wireStackScripts` in your layout `<head>` emits it on every page.
 
 Add the directive if your app navigates with `wire:navigate` — see
-[Getting Started → JavaScript Assets](../getting-started.md#javascript-assets) for why
+[Getting Started → JavaScript Assets](../start/getting-started.md#javascript-assets) for why
 the layout placement is the one that survives the cached Back/Forward path.
 
 ### `sortablejs_cdn`

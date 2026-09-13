@@ -1,5 +1,6 @@
 ---
 order: 45
+summary: A whole row as an affordance — double-click to open, right-click for a menu, Enter for the primary action.
 ---
 
 # Record Actions
@@ -218,10 +219,16 @@ override owns its own contrast:
 - **Expecting record actions on the mobile card or sub-rows** — record actions
   are a desktop pointer affordance on the main rows; touch cards use the visible
   action buttons, and sub-rows are intentionally excluded.
+- **Expecting a bound trigger to survive `actions(false)`** — a table that
+  withholds the actions of an inactive record
+  ([Inactive Records](inactive-records.md)) refuses them in
+  `executeTableAction()` / `openActionModal()`, which is where a bound
+  `onClick()` / `onDoubleClick()` runs too. The gesture still fires in the
+  browser and then does nothing; only `recordUrl()`, a plain link, is untouched.
 
 ## Migrating from `rowContextMenu()`
 
-`Table::rowContextMenu([...])` is deprecated. Bind the right-click trigger
+`Table::rowContextMenu([...])` was removed in 2.0. Bind the right-click trigger
 instead:
 
 ```php
@@ -234,6 +241,12 @@ instead:
     Action::make('delete')->onContextMenu(),
 ])
 ```
+
+An `ActionGroup` used to be accepted in that list and flattened into the items;
+bind each action instead, which is the same menu without the grouping object in
+the middle. Note that a table with record actions is a **grid**: its rows carry
+the role and tabindex the keyboard layer needs, so the menu is reachable without
+a mouse — and each row costs about 260 bytes more than the mouse-only list did.
 
 ## Related docs
 

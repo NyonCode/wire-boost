@@ -1,5 +1,6 @@
 ---
 order: 50
+summary: Every field wire-forms ships — input, layout, display, relationship and repeating — with what each one stores.
 ---
 
 # Form Fields
@@ -18,12 +19,16 @@ Reference for the built-in Wire Forms field and layout components.
 | Pick one visible option | [Radio](radio.md) |
 | Free-form tags / chips | [Tags](tags.md) |
 | Numeric range slider | [Slider](slider.md) |
+| Enter a currency amount | [MoneyInput](money-input.md) |
+| Enter an international phone number | [PhoneInput](phone-input.md) |
 | Key-value pair editor | [KeyValue](key-value.md) |
 | Star rating | [Rating](rating.md) |
 | Choose date or date/time | [DateTimePicker](date-time-picker.md) |
 | Choose a time from slots | [TimePicker](time-picker.md) |
+| Pick a period — two dates at once | [DateRangePicker](date-range-picker.md) |
 | Pick a color | [ColorPicker](color-picker.md) |
 | Upload files | [FileUpload](file-upload.md) |
+| Capture a hand-drawn signature | [SignaturePad](signature-pad.md) |
 | Rich text editing | [RichEditor](rich-editor.md) or [TiptapEditor](tiptap-editor.md) |
 | Markdown editing | [MarkdownEditor](markdown-editor.md) |
 | Code / script input | [CodeEditor](code-editor.md) |
@@ -97,7 +102,7 @@ Defaults fill only keys the incoming data does not provide, so they apply in
 create mode and to new/virtual fields, and **never overwrite a record's stored
 value — even an intentional `null`.** For record- or context-driven prefill on
 top of defaults, use `fillFormUsing()` on the action (see
-[Actions](../../core/actions.md)).
+[Actions](../../core/actions/index.md)).
 
 #### Filling defaults over null
 
@@ -191,17 +196,17 @@ use NyonCode\WireForms\Components\Toggle;
 ### Group fields into sections
 
 ```php
-use NyonCode\WireForms\Components\Layout\Grid;
-use NyonCode\WireForms\Components\Layout\Section;
+use NyonCode\WireCore\Foundation\Schema\Grid;
+use NyonCode\WireCore\Foundation\Schema\Section;
 
 ->schema([
-    Section::make('User')
+    Section::make('User')                          // [tl! focus:start]
         ->schema([
             Grid::make()->columns(2)->schema([
                 TextInput::make('name')->required(),
                 TextInput::make('email')->email()->required(),
             ]),
-        ]),
+        ]),                                        // [tl! focus:end]
 ])
 ```
 

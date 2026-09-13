@@ -47,8 +47,9 @@ are addressed by name (`Wizard::make('signup')`).
 - `->rules()` accepts a Closure (or Closure entries in the array), evaluated with `$get`/`$set` for rules that depend on live sibling state.
 - Options accept arrays or an enum class: `->options(Status::class)` (shared `HasOptions`).
 - Reactivity is opt-in with `->live()`; default fields use deferred `wire:model`.
+- `->nativeSubmit()` renders the fields for the browser's own POST instead of Livewire: each carries `name` and `value=old(...)`, errors come from the shared `$errors` bag. The form element, its action, its CSRF token and its submit button stay in the view — the form object renders fields only. A field must implement `Contracts\SupportsNativeSubmit`; a schema containing one that does not throws `FormConfigurationException` at render, because a `wire:model`-only input has no `name` and would post nothing. `TextInput`, `Checkbox`, `Hidden` and `OtpInput` implement it — the fields the signed-out screens are made of. A checkbox posts a constant `value="1"` and answers by being present, so "off" is the missing key; `Hidden` is how a native form carries a value nobody typed, such as the reset token; `OtpInput` renders a real named input beside its boxes, so a code challenge is answerable with JavaScript off. `live()`/reactive fields, server-searching `Select`, `FileUpload` and `Repeater` cannot. The mode is applied after `form.configuring`, so a field a hook added is switched — and refused — like a declared one. Used by every signed-out screen in `wire-module-auth`, which posts to Fortify (ADR 0036).
 - `Select`/`Radio`/`CheckboxList` share the same options API.
-- `FileUpload` is **store-on-submit** (orphan-free): `InteractsWithFileUploads` composes Livewire `WithFileUploads`; an upload stays a pending `TemporaryUploadedFile` (multiple fields merge/append via the `updating`-captured value, single keeps newest) and is moved to the `disk()`/`directory()` only on **save** by a `SaveHandler` step (`FileUpload::storeUploadedFile`). The view lists stored paths + pending uploads with index-based `removeUploadedFile`; `->deletable(false)` is read-only.
+- `FileUpload` is **store-on-submit** (orphan-free): `InteractsWithFileUploads` composes Livewire `WithFileUploads`; an upload stays a pending `TemporaryUploadedFile` (Livewire 4 appends new uploads onto a `multiple()` field's existing entries itself — do NOT add an `updated()`/`updating()` hook that merges them again, it double-counts what is already there; a single field keeps the newest) and is moved to the `disk()`/`directory()` only on **save** by a `SaveHandler` step (`FileUpload::storeUploadedFile`). The view lists stored paths + pending uploads with index-based `removeUploadedFile`, which writes through `StateContainer::writeInto()` so it works in an action modal too; `->deletable(false)` is read-only.
 - `Radio` has display variants: `->cards()` (selectable cards, `->inline()` for a row,
   `->hideIndicator()` to drop the dot), `->segmented()` (pill over a track), and `->buttons()`
   (separate buttons, selected filled; `->inline()` for a row). `->icons([value => name])` and
@@ -115,6 +116,20 @@ Live validation is opt-in per field: `->validateLive()` (validates on each chang
 reactive roundtrip and refreshes only its error bag entry — the rest of the form is not flagged.
 Conditional rules (`requiredIf()` etc.) are honoured live. Cross-field Laravel string rules like
 `required_if:other,value` still validate on submit; use `requiredIf()` for the reactive equivalent.
+
+- **`Form::fieldPartials()` answers a field commit with the fields that moved, not the host view.** Opt-in.
+  A `live()` field re-renders the whole component otherwise: 19 860 B of HTML to carry one field's 1 562 B on a
+  12-field form (12.7× raw, 2.3× gzipped). Three outcomes, and the common one sends **nothing at all** — a
+  field's value rides `wire:model` and the data payload rather than its markup (a `TextInput` renders no
+  `value` attribute), so an ordinary keystroke moves no markup anywhere. Markup moves only when something
+  *derived* does: a sibling whose `options()`/`label()`/`helperText()` closure reads the state, an error
+  appearing, a field becoming disabled — those come back as regions. A `visibleWhen()` sibling appearing or
+  disappearing changes the SET of fields, which is a shape change no region describes, and falls back to a
+  full render on its own. **It decides by comparing rendered markup, never by reasoning about dependencies** —
+  a graph would have to understand every closure a field's config can hold, and the one it missed would show
+  a stale value silently. **What you trade:** the host's own view does not re-render on a covered commit, so
+  anything it draws outside the form (a live preview of `$data`, a heading counting filled fields) keeps its
+  previous value until the next full render. Tell consumers that before suggesting the flag.
 
 All of this reactivity works for fields inside `Repeater` items too — `afterStateUpdated()`,
 live validation, field actions, remote search and conditional visibility (`visibleWhen()` /

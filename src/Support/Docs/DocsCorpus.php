@@ -23,6 +23,12 @@ class DocsCorpus
         'table' => 'wire-table',
         'forms' => 'wire-forms',
         'core' => 'wire-core',
+        'panels' => 'wire-panels',
+        'admin' => 'wire-admin',
+        // Six packages under one prefix. The label is the grouping a caller can
+        // filter by, not a composer name — `docs/modules/` is where every
+        // ready-made area is documented, and no one of them owns the directory.
+        'modules' => 'wire-modules',
         'sortable' => 'wire-sortable',
         'boost' => 'wire-boost',
     ];
@@ -31,6 +37,20 @@ class DocsCorpus
      * @param  array<string, string>  $roots  Root label => absolute directory.
      */
     public function __construct(private array $roots) {}
+
+    /**
+     * Every value the `package` filter accepts, in documentation order.
+     *
+     * The list is derived rather than restated: a filter value that no document
+     * can carry would only ever return nothing, and a package whose docs shipped
+     * without reaching this list is unfindable.
+     *
+     * @return array<int, string>
+     */
+    public static function packages(): array
+    {
+        return array_values(array_unique(self::PACKAGE_BY_PREFIX));
+    }
 
     /**
      * The corpus as shipped: the bundled English docs mirror, the curated
