@@ -551,6 +551,7 @@ final class TaskBoard extends Page
     protected static ?string $navigationIcon = 'outline:view-columns';
     protected static ?string $navigationGroup = 'work';
     protected static int $navigationSort = 30;
+    protected static ?string $navigationParent = null;
     protected static ?string $permission = 'tasks.view';        // [tl! focus:end]
     protected static bool $shouldRegisterNavigation = true;
 
@@ -564,7 +565,11 @@ label is `$navigationLabel`, or the class name humanised. `$permission` becomes
 the route's `can:` middleware **and** hides the menu entry from someone who lacks
 it, so the menu never offers a page its route would refuse;
 `$shouldRegisterNavigation = false` keeps a page routed and out of the menu. Two
-pages on one key are refused, as two resources are.
+pages on one key are refused, as two resources are. `$navigationParent` puts the
+entry under another one, by key or class — [how that is
+decided](navigation.md#under-an-entry-it-does-not-own) — and a link to the page
+from code is `TaskBoard::url()`, any further parameter landing in the query
+string ([Routing](routing.md#linking-to-them)).
 
 The registry fills itself on its first read rather than at boot, so a page is
 there for config-declared routes too. A page can still be routed from an
@@ -625,7 +630,7 @@ The zone the trail links into is read **once, at mount**, and kept in the public
 read at mount because that is the only moment it can be read: during a Livewire
 update `Route::currentRouteName()` is `livewire.update`, so a crumb that
 re-derived the zone would link correctly on the first paint and out of the zone on
-every one after ([ADR 0027](routing.md#zones)).
+every one after ([Zones](routing.md#zones)).
 
 A page that is not a resource page — a settings screen, a module's own list —
 implements the contract itself and returns whatever trail it has. A page inside
@@ -695,7 +700,7 @@ the route name — rather than by comparing the tab's URL with the current one,
 where a trailing slash or a query string decides whether a tab lights up. Like
 the zone beside it, it is read once at mount and kept in the public
 `$currentPage`, because during a Livewire update the route name is
-`livewire.update` ([ADR 0027](routing.md#zones)) and an edit page re-renders on
+`livewire.update` ([Zones](routing.md#zones)) and an edit page re-renders on
 every keystroke.
 
 The view and edit pages compose this already. A page of your own joins the row by

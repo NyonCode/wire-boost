@@ -2,7 +2,7 @@
 
 The **optional** admin shell: a layout and a sidebar over what is already registered. It requires
 `wire-panels` and **nothing requires it** — a composer boundary is the opt-in, so an application that wants
-resource pages and its own chrome simply does not install this (ADR 0028).
+resource pages and its own chrome simply does not install this.
 
 - **Installing is not adopting.** No provider sets `livewire.component_layout`. A page renders inside the
   shell only once the application's own layout view says so, and the sidebar works alone inside any frame.
@@ -40,7 +40,7 @@ resource pages and its own chrome simply does not install this (ADR 0028).
   card with no navigation; the screens that render in it are `nyoncode/wire-module-auth`'s, over Fortify.
 @endverbatim
 - **Slots, never configuration.** There is no `Panel` object, no branding/colour/auth config and no URL scheme
-  — that is the panel-builder drift ADR 0020 named. `vendor:publish --tag=wire-admin::views` is how markup
+  — that is the panel-builder drift this design avoids. `vendor:publish --tag=wire-admin::views` is how markup
   changes.
 - **It reads seams, holds no state**: `Workspace::navigation($zone, $linkedOnly)` for the menu,
   `ResolvesPageUrls` for every link (null until a package owns routing), `Zone::current()` /
@@ -54,7 +54,27 @@ resource pages and its own chrome simply does not install this (ADR 0028).
   child that links there does.
 - **Zone and active key are read at page render, in the component constructor** — never re-derived per render.
   Inside a Livewire update `Route::currentRouteName()` is `livewire.update`, so a re-derived answer is right
-  once and null forever after, while rendering perfectly (ADR 0027).
+  once and null forever after, while rendering perfectly.
+- **The menu filter is `wire-admin.navigation.filter`** (`auto` from `filter_threshold` = 12 rows, `always`,
+  `never`), driven by `wireNavFilter` in the package's own bundle (`dist/wire-admin-navigation.js`, delivered
+  by `@wireStackScripts`). Rows carry `data-nav-row` / `data-nav-child` / `data-nav-label` (lower-cased) and
+  groups `data-nav-group`; `$store.wireAdmin.filtering` opens folded groups and submenus while a term is typed.
+  It is not a second search — ⌘K is. Never add another filter or a second copy of the menu for it.
+@verbatim
+- **The menu can be a bar: `wire-admin.layout.navigation` = `'top'`** (or `<x-wire-admin::layout navigation="top">`;
+  anything else throws `NavigationShapeException`). `<x-wire-admin::top-nav>` reads the same `Workspace` and
+  `ActiveNavigation`; a group — and a lone entry with children — is a `wireDropdown` panel, a group of one is a
+  link, and what does not fit goes under *More* (`wireTopNav`, hidden in the bar exactly when shown in the
+  panel). Below `lg` the drawer is still the menu (`<x-wire-admin::sidebar :drawer-only="true">`), so the bar's
+  names are `admin-topnav-*`, never `admin-nav-*`. No rail toggle or ⌘B in that shape.
+@endverbatim
+- **Pins and recent pages are `NavigationMemory`** (wire-core, over the `PreferenceDriver` — `navigation[:zone]`
+  bag of keys), drawn by the one Livewire piece of the menu, `wire-admin.nav-pins`. Offered only when
+  `stores()` (never over the `null` driver); keys are intersected with the current `Workspace::items()`, never
+  drawn from storage; recent is written on `page.mounting` only, never while the menu renders. A row's pin
+  dispatches `wire-admin-pin`; the section answers `wire-admin-pinned`. Never give pins a store of their own.
+- **Focus is the shell's**: the phone drawer is `x-trap`ped while open (first row focused, focus returned to
+  the opener), and `<main>` has `tabindex="-1"` for the skip link. A custom drawer must keep both.
 - **An unrouted entry keeps its row and loses its link** (`aria-disabled`), which is the honest picture of a
   half-routed catalogue; `:linked-only="true"` drops those rows instead.
 - **The mobile handle listens to the media query, not to `resize`** — the same query the `lg:` classes are

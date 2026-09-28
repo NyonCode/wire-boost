@@ -26,6 +26,7 @@ pulled in automatically, and nothing above it is installed for you.
 | Notifications | `nyoncode/wire-module-notifications` | The stored history behind the notification bell | Panels |
 | Audit | `nyoncode/wire-module-audit` | A screen for the trail core already records | Panels |
 | Media | `nyoncode/wire-module-media` | A media library: uploads, folders, previews, a form picker | Panels |
+| Companies | `nyoncode/wire-module-tenants` | Company registration, profile and members over a tenant zone | Panels |
 | Boost | `nyoncode/wire-boost` | AI tooling: MCP server, guidelines, and agent skills | Core |
 
 The graph has one direction. `wire-panels` may name every component package and
@@ -71,7 +72,7 @@ see [Panels](../panels/overview.md) for why the direction is the design.
 | `packages/core/src/Foundation/Support` | Shared helpers — `ResponsiveGrid` (per-breakpoint columns), `MobileSheet`, `EnumResolver` |
 | `packages/core/src/Foundation/Concerns` | Canonical shared traits — `HasColor`, `HasIcon`, `HasSize`, `HasVisibility`, `HasActions`, `HasSheetOnMobile`, … |
 | `packages/core/src/Foundation/Registration` | `Catalog` — everything an application registered, whatever kind — plus the `RegistrySource` / `HasRegistryKey` contracts a registry joins it with |
-| `packages/core/src/Foundation/Routing` | What a page declaration carries (`ProvidesPages`, `RoutePage`, `ConfiguresRoutes`), `Zone`, and the `ResolvesPageUrls` / `AuthorizesUrls` / `RegistersPageRoutes` seams the URL convention answers |
+| `packages/core/src/Foundation/Routing` | What a page declaration carries (`ProvidesPages`, `RoutePage`, `ConfiguresRoutes`), `Zone`, and the `ResolvesPageUrls` / `AuthorizesUrls` seams the URL convention answers |
 | `packages/core/src/GlobalSearch` | The ⌘K palette, its search service and result value object |
 | `packages/core/src/Core/Resources` | Resource identity, the registry, `Workspace` and the navigation vocabulary |
 | `packages/core/src/Modals` | Modal, confirmation, slide-over, wizard classes |
@@ -114,6 +115,7 @@ composer test:module-settings
 composer test:module-notifications
 composer test:module-audit
 composer test:module-media
+composer test:module-tenants
 
 composer lint
 composer analyse

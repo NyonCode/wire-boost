@@ -14,6 +14,7 @@ Row, header and bulk actions are objects with a fluent API and lifecycle hooks:
         ->action(fn ($record) => $record->approve());
 
 - Presets: `DeleteAction`, `EditAction`, `ViewAction`, `RestoreAction`, `ForceDeleteAction`, plus bulk presets (`DeleteBulkAction`, `RestoreBulkAction`, `ForceDeleteBulkAction`). They confirm and label themselves; the host supplies `->action()`.
+- A chain repeated on a second surface becomes a preset class: `php artisan make:wire-action Archive [--bulk]` writes `app/Wire/Actions/ArchiveAction.php` (or `ArchiveBulkAction`) — defaults set in the constructor, `make(string $name = 'archive')`. Not `app/Actions` (business actions live there). Stubs: `wire-core::stubs`.
 - `->url()` takes a **static string or a per-record Closure**, and the two are not interchangeable on a
   record-less surface (a header action, the table's empty state): a string resolves with or without a
   record, a Closure needs one and stays unresolved — the action then renders as a plain button, not a
@@ -128,7 +129,7 @@ form schema for validated flows.
 ### Workflow / state machine
 
 `WorkflowState::for(StatusEnum::class)->column('status')->allow($from, $to)->guard($to, fn)->after($to, fn)`.
-A **seam, not an engine** (ADR 0018): it owns states, edges, guards and side effects, and delegates every
+A **seam, not an engine**: it owns states, edges, guards and side effects, and delegates every
 meaning — no process definitions, no approval modelling, no scheduler. Transitions save through the ordinary
 path, so tenant scoping and audit come along without rewiring.
 
@@ -220,8 +221,17 @@ below.
 
 ### Multi-tenancy
 
-Off by default (`wire-core.tenancy.enabled`), **strict once on**. Bind a `TenantResolver`; the shipped default
-answers null. Mark models with `BelongsToTenant` — opt-in per model, because the framework cannot know which
+Off by default (`wire-core.tenancy.enabled`), **strict once on**. The shipped resolver answers the tenant held by
+`Core\Tenancy\CurrentTenant` (scoped: every request and job starts empty), null when nothing was entered; enter
+one with `app(Tenancy::class)->runAs($tenant, fn () => …)` in a job, command, seeder or test — it restores what was
+current, even on a throw. **Never keep "the current tenant" anywhere else**. Isolation is
+`wire-core.tenancy.isolation`: `column` (default), `database` (a database per tenant: models use
+`BelongsToTenantDatabase` on the `tenancy.database.connection`, `wire:tenants:create` / `wire:tenants:migrate`,
+no tenant entered = the first query throws) or a class implementing `IsolatesTenants` (`enter`/`leave`, called only
+by `CurrentTenant`). Binding a `TenantResolver` of your own replaces the default. **Queued jobs carry the tenant** (payload
+`wireTenant`, re-entered on `JobProcessing`, the previous tenant restored after — so `sync` jobs do not strip the
+request's); a deleted tenant fails the job. `runAs()` dispatches a returned `PendingDispatch` inside the tenant (and
+returns null), so `fn () => Job::dispatch()` is safe. Mark models with `BelongsToTenant` — opt-in per model, because the framework cannot know which
 tables are tenant-owned and guessing would be a guess about who may see what.
 
 **The fail-safe is the whole story: tenancy on with no tenant resolved returns NOTHING, never everything.**
@@ -263,7 +273,7 @@ surfaces weeks later as "the modal never closes". Report back with a notificatio
 driver is for, since the request that queued the job is gone by then. An action renamed or removed between
 dispatch and run throws too.
 
-`RunActionJob` reaches Notifications by class name, not import: both are L2 and ADR 0025 forbids L2→L2 — the
+`RunActionJob` reaches Notifications by class name, not import: both are L2 and the module-layer rule forbids L2→L2 — the
 same soft seam `HasLifecycle::resolveNotificationManagerClass()` uses.
 
 ### Notifications
@@ -305,7 +315,9 @@ is shown at all: the event died with the document, the flash crossed.
 Read-only counterpart of forms. `Infolist::make()->schema([...])` with entries: `TextEntry`, `BadgeEntry`,
 `IconEntry`, `BooleanEntry`, `ListEntry`, `ImageEntry`, `ColorEntry`, `KeyValueEntry`, `RepeatableEntry`.
 Layouts: the shared vocabulary above (`Section`, `Grid`, `Fieldset`, `Flex`, `Tabs`, `Wizard`, `Callout`,
-`EmptyState`) — see the Layouts section. Integrates with `ViewAction->infolist()`.
+`EmptyState`) — see the Layouts section. Integrates with `ViewAction->infolist()`. A custom entry starts from
+`php artisan make:wire-entry Money` (`app/Infolists/Components/MoneyEntry.php` + `resources/views/infolists/entries/money.blade.php`,
+the view gets `$field` and reads `getFormattedState()`).
 
 Actions: `Section::headerActions([...])`, `Entry::actions([...])`, and `RepeatableEntry::actions([...])`
 (per-row, gets the row `$record`) — dispatch via the host's `callInfolistAction()` (works in an action modal /
